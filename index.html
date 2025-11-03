@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NEON DRIFT — Swipe Simon</title>
+<style>
+  :root{--bg:#0b0f14;--fg:#e8f0ff;--accent:#12e4ff;--accent2:#ffde59;--bad:#ff5b6e;--ok:#7dff9e}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:system-ui,Segoe UI,Roboto,Arial}
+  .wrap{max-width:900px;margin:0 auto;padding:16px}
+  body::before{
+    content:"";position:fixed;inset:0;z-index:-1;
+    background:
+      radial-gradient(60vw 60vw at 10% 10%, rgba(18,228,255,.10), transparent 60%),
+      radial-gradient(60vw 60vw at 90% 90%, rgba(255,222,89,.10), transparent 60%),
+      repeating-linear-gradient(0deg, rgba(255,255,255,.06), rgba(255,255,255,.06) 1px, transparent 2px, transparent 34px);
+    animation:bgmove 20s linear infinite;
+  }
+  @keyframes bgmove{from{transform:translateY(0)}to{transform:translateY(34px)}}
+
+  .hud{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+  .pill{background:#121821;border:1px solid rgba(255,255,255,.08);border-radius:999px;padding:8px 12px;font-weight:700}
+  .badge{background:#121821;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:6px 10px}
+  .card{background:#0f141cCC;border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(6px);
+        border-radius:14px;padding:16px;margin:12px auto}
+  .center{text-align:center}
+
+  .arena{position:relative;height:260px;margin-top:8px;border-radius:12px;overflow:hidden;
+         border:1px dashed rgba(255,255,255,.12)}
+  .lane{position:absolute;top:0;bottom:0;width:50%}
+  .lane.left{left:0;border-right:1px dashed rgba(255,255,255,.07)}
+  .lane.right{right:0;border-left:1px dashed rgba(255,255,255,.07)}
+  .flash{animation:flash .12s linear 1}
+  @keyframes flash{from{background:rgba(255,255,255,.18)}to{background:transparent}}
+
+  .stim{position:absolute;top:50%;transform:translateY(-50%); background:var(--accent2);color:#111;
+        font-weight:900;letter-spacing:.5px;font-size:46px;padding:12px 20px;border-radius:10px;min-width:160px;text-align:center}
+  .stim.left{left:6%} .stim.right{right:6%}
+  .fix{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:var(--accent);font-size:44px;font-weight:900}
+
+  .btnrow{display:flex;gap:14px;margin-top:14px}
+  button, select{flex:1;font-size:18px;padding:12px 14px;border-radius:10px;border:0;background:#17202b;color:var(--fg)}
+  button{font-size:28px}
+  button:active{transform:translateY(1px)}
+
+  .meter{position:relative;width:92px;height:92px}
+  .ring{stroke:rgba(255,255,255,.1);fill:none;stroke-width:10}
+  .ring2{stroke:var(--accent);fill:none;stroke-width:10;stroke-linecap:round;transform:rotate(-90deg);transform-origin:50% 50%}
+  .badflash{animation:bad .12s linear 1}
+  @keyframes bad{from{background:#3a0a12}to{background:transparent}}
+
+  table{width:100%;border-collapse:collapse;margin-top:8px;font-size:14px}
+  th,td{border-bottom:1px solid rgba(255,255,255,.1);padding:8px;text-align:center}
+  .small{opacity:.85;font-size:13px}
+  .row{display:flex;gap:12px;margin-top:10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hud">
+    <div class="pill">Score <span id="score">0</span></div>
+    <div class="pill">Combo <span id="combo">0</span></div>
+    <div class="pill">Lives <span id="lives">3</span></div>
+    <div class="pill">Round <span id="round">-</span></div>
+    <div class="pill">Len <span id="lenTxt">-</span></div>
+    <div class="pill" id="diffPill" style="display:none;">Diff <span id="diffTxt">-</span></div>
+    <label class="badge"><input type="checkbox" id="lefthand"> Left-hand mode</label>
+
+    <svg class="meter" viewBox="0 0 100 100" aria-hidden="true">
+      <circle class="ring" cx="50" cy="50" r="42"></circle>
+      <circle class="ring2" id="timerArc" cx="50" cy="50" r="42" stroke-dasharray="264" stroke-dashoffset="0"></circle>
+    </svg>
+  </div>
+
+  <h2 class="center" id="title">NEON DRIFT</h2>
+
+  <div id="intro" class="card center">
+    <p><b>Swipe</b> in the direction that matches the <b>meaning</b> of the word (“LEFT/RIGHT”). Ignore which side of the screen it appears on.</p>
+
+    <div class="row" id="configRow">
+      <select id="lenSelect" aria-label="Length">
+        <option value="12">Length: Short (12)</option>
+        <option value="24" selected>Length: Medium (24)</option>
+        <option value="48">Length: Long (48)</option>
+      </select>
+      <select id="diffSelect" aria-label="Difficulty" style="display:none;">
+        <option value="easy" selected>Difficulty: Easy</option>
+        <option value="medium">Difficulty: Medium</option>
+        <option value="hard">Difficulty: Hard</option>
+      </select>
+    </div>
+
+    <p class="small" id="aboutBuild"></p>
+    <div class="btnrow">
+      <button id="start">Start</button>
+      <button id="practice">Practice 5</button>
+    </div>
+  </div>
+
+  <div id="task" class="card" style="display:none;">
+    <div class="arena" id="arena">
+      <div class="lane left" id="laneL"></div>
+      <div class="lane right" id="laneR"></div>
+      <div class="fix" id="fix">+</div>
+    </div>
+    <div class="btnrow">
+      <button id="leftBtn">← Swipe Left</button>
+      <button id="rightBtn">Swipe Right →</button>
+    </div>
+    <p class="small center">Tip: you can swipe anywhere on the arena. Buttons are just hints.</p>
+  </div>
+
+  <div id="done" class="card center" style="display:none;">
+    <h3>Run Complete</h3>
+    <p><b>Final Score:</b> <span id="finalScore">0</span></p>
+    <div id="summary"></div>
+    <button id="dl">Download CSV</button>
+  </div>
+
+  <p class="small center">Built on stimulus–response compatibility (Simon effect). Decoy flashes in B increase spatial pull without changing the rule.</p>
+</div>
+
+<script>
+(function(){
+  // ------- URL: choose Version only -------
+  const url = new URL(location.href);
+  const STATE = (url.searchParams.get("v")||"A").toUpperCase(); // "A" | "B"
+
+  // ------- Posting target (optional) -------
+  const POST_RESULTS_URL = ""; // paste Apps Script /exec here if logging to Google Sheets
+
+  // ------- Base behavior flags by version -------
+  const BASE = (STATE==="B")
+    ? {version:"B", lives:3, decoys:true, haptics:true, audio:true}
+    : {version:"A", lives:3, decoys:false, haptics:false, audio:false};
+
+  // ------- Difficulty offsets for B (ms change to deadlines) -------
+  const DIFF_OFFSETS = { easy:0, medium:-200, hard:-350 };
+
+  // ------- State -------
+  const iti=620, fixMs=420, tooFast=150;
+  const words=["LEFT","RIGHT"];
+  let pid="P"+Math.random().toString(36).slice(2,8);
+
+  let roundIndex=-1, pool=[], idx=0, tStart=0, current=null;
+  let score=0, combo=0, lives=BASE.lives, inPractice=false;
+  const results=[];
+  let swipeStart=null, timerTick=null; // (fixed: single declaration)
+
+  // ------- Elements -------
+  const $=id=>document.getElementById(id);
+  const intro=$('intro'), task=$('task'), done=$('done'), title=$('title'), about=$('aboutBuild');
+  const scoreEl=$('score'), comboEl=$('combo'), livesEl=$('lives'), roundEl=$('round'), finalScore=$('finalScore');
+  const startBtn=$('start'), practiceBtn=$('practice'), dlBtn=$('dl');
+  const arena=$('arena'), fix=$('fix'), laneL=$('laneL'), laneR=$('laneR'), arc=$('timerArc');
+  const leftBtn=$('leftBtn'), rightBtn=$('rightBtn'), lh=$('lefthand'), summary=$('summary');
+  const lenTxt=$('lenTxt'), diffPill=$('diffPill'), diffTxt=$('diffTxt');
+  const lenSel=$('lenSelect'), diffSel=$('diffSelect');
+
+  // ------- UI init -------
+  title.textContent = (STATE==="B") ? "NEON DRIFT — vB" : "NEON DRIFT — vA";
+  lenTxt.textContent = "Medium";
+  if (STATE==="B"){ diffPill.style.display=""; diffSel.style.display=""; diffTxt.textContent="Easy"; }
+  about.textContent = (STATE==="B")
+    ? "vB adds rounds, decoys, haptics & SFX. Choose Length & Difficulty, then Start."
+    : "vA baseline with swipe controls. Choose Length, then Start.";
+
+  lenSel.addEventListener('change',()=>{
+    lenTxt.textContent = (lenSel.value==="12"?"Short":lenSel.value==="24"?"Medium":"Long");
+  });
+  diffSel.addEventListener('change',()=>{ diffTxt.textContent = diffSel.value[0].toUpperCase()+diffSel.value.slice(1); });
+
+  // ------- Build per-run config from selectors -------
+  function getRunConfig(){
+    const total = parseInt(lenSel.value,10); // 12 / 24 / 48
+    if (STATE==="A"){
+      return {
+        lives: BASE.lives, decoys:false, haptics:false, audio:false,
+        rounds:[{name:"A", n:total, incong:.50, deadline:2000}]
+      };
+    }
+    // Version B
+    const baseDeadlines=[1700,1400,1200];
+    const baseIncong=[.55,.70,.80];
+    const offset = DIFF_OFFSETS[diffSel.value]||0;
+    const deadlines = baseDeadlines.map(d=>Math.max(700,d+offset));
+    // Evenly split into 3 rounds
+    const q=Math.floor(total/3), r=total%3;
+    const sizes=[q+(r>0?1:0), q+(r>1?1:0), q];
+    return {
+      lives: BASE.lives, decoys:true, haptics:true, audio:true,
+      rounds:[
+        {name:"B1", n:sizes[0], incong:baseIncong[0], deadline:deadlines[0]},
+        {name:"B2", n:sizes[1], incong:baseIncong[1], deadline:deadlines[1]},
+        {name:"B3", n:sizes[2], incong:baseIncong[2], deadline:deadlines[2]},
+      ]
+    };
+  }
+
+  // Current run config (rebuilt on Start/Practice)
+  let RUN = getRunConfig();
+
+  // ------- Helpers -------
+  function show(el,vis=true){ el.style.display=vis?'':''; }
+  function vibrate(ms){ if (BASE.haptics && navigator.vibrate) navigator.vibrate(ms); }
+  function tickSound(ok=true){
+    if(!BASE.audio) return;
+    try{
+      const ac = new (window.AudioContext||window.webkitAudioContext)();
+      const o = ac.createOscillator(); const g = ac.createGain();
+      o.frequency.value = ok? 660: 140; g.gain.value=0.03;
+      o.connect(g); g.connect(ac.destination); o.start();
+      setTimeout(()=>{o.stop(); ac.close();}, ok?60:110);
+    }catch(_){}
+  }
+  function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [a[i],a[j]]=[a[j],a[i]]; } }
+  function clearArena(){ laneL.innerHTML=""; laneR.innerHTML=""; }
+  function drawFix(){ clearArena(); fix.style.display=''; }
+  function drawStim(tr){
+    clearArena(); fix.style.display='none';
+    const el=document.createElement('div'); el.className='stim '+tr.side; el.textContent=tr.word;
+    (tr.side==='left'?laneL:laneR).appendChild(el);
+  }
+
+  function buildPool(roundCfg){
+    pool=[];
+    const incong = Math.round(roundCfg.n*roundCfg.incong);
+    const cong   = roundCfg.n - incong;
+    for(let i=0;i<cong;i++){
+      const w=words[Math.random()<0.5?0:1];
+      pool.push({word:w, side:(w==="LEFT"?"left":"right"), deadline:roundCfg.deadline, round:roundCfg.name, decoy:false});
+    }
+    for(let i=0;i<incong;i++){
+      const w=words[Math.random()<0.5?0:1];
+      pool.push({word:w, side:(w==="LEFT"?"right":"left"), deadline:roundCfg.deadline, round:roundCfg.name, decoy:false});
+    }
+    if (BASE.decoys){
+      shuffle(pool);
+      const k=Math.max(2, Math.round(pool.length*0.15));
+      for(let i=0;i<k;i++){ const j=(Math.random()*pool.length)|0; pool[j].decoy=true; }
+    } else {
+      shuffle(pool);
+    }
+  }
+
+  function startRun(practice=false){
+    RUN = getRunConfig();                      // read UI now
+    inPractice = practice;
+    roundIndex = -1;
+    score=0; combo=0; lives=RUN.lives;
+    scoreEl.textContent=score; comboEl.textContent=combo; livesEl.textContent=lives;
+    nextRound();
+  }
+
+  function nextRound(){
+    roundIndex++;
+    if (roundIndex >= RUN.rounds.length){ return finish(); }
+    const cfg = inPractice ? {name:"P",n:5,incong:.5,deadline:2000} : RUN.rounds[roundIndex];
+    buildPool(cfg); idx=0; roundEl.textContent = inPractice? "P" : (roundIndex+1)+"/"+RUN.rounds.length;
+    show(intro,false); show(done,false); show(task,true);
+    nextTrial();
+  }
+
+  function decoyFlash(side){
+    if (!BASE.decoys) return;
+    const el = (side==='left'?laneL:laneR);
+    el.classList.add('flash'); setTimeout(()=>el.classList.remove('flash'), 120);
+  }
+
+  function setTimer(deadline, started){
+    const total = 2*Math.PI*42; // ~264
+    if (timerTick) cancelAnimationFrame(timerTick);
+    function step(){
+      const t = performance.now()-started;
+      const ratio = Math.max(0, 1 - t/deadline);
+      arc.style.strokeDashoffset = total*(1-ratio);
+      if (t<deadline && current) timerTick = requestAnimationFrame(step);
+    }
+    step();
+  }
+
+  function nextTrial(){
+    if (idx >= pool.length){ return nextRound(); }
+    current = pool[idx++]; drawFix();
+    setTimeout(()=>{
+      if (current.decoy){ decoyFlash(current.side==='left'?'right':'left'); }
+      drawStim(current); tStart = performance.now(); setTimer(current.deadline, tStart);
+    }, fixMs);
+  }
+
+  function points(rt,congruent,correct,deadline){
+    if(!correct) return 0;
+    const base = Math.max(0, Math.round((deadline-rt)/12));
+    const hard = congruent?0:7;
+    const mult = 1 + Math.floor(combo/5)*0.25;
+    return Math.round((base+hard)*mult);
+  }
+
+  function handleResponse(dir){
+    if (!current || !tStart) return;
+    const rt = Math.round(performance.now()-tStart);
+    const should = (current.word==="LEFT")?"left":"right";
+    const inTime = rt <= current.deadline && rt>tooFast;
+    const congruent = (current.side===should);
+    const correct = inTime && (dir===should);
+
+    if (correct){ combo++; score += points(rt,congruent,correct,current.deadline); tickSound(true); }
+    else{ combo=0; lives=Math.max(0,lives-1); vibrate(30); arena.classList.add('badflash'); setTimeout(()=>arena.classList.remove('badflash'),120); tickSound(false); }
+
+    results.push({
+      state: STATE, pid, round: inPractice?"practice":(roundIndex+1),
+      trial: idx, word: current.word, stim_side: current.side, decoy: !!current.decoy,
+      congruent, response: dir, correct, rt, deadline: current.deadline,
+      score_after: score, combo, lives
+    });
+
+    scoreEl.textContent=score; comboEl.textContent=combo; livesEl.textContent=lives;
+    tStart=0; if (lives<=0 && !inPractice) return finish();
+    setTimeout(nextTrial, iti);
+  }
+
+  function mean(a){ return a.reduce((x,y)=>x+y,0)/(a.length||1); }
+  function summarize(){
+    const clean=r=>r.correct && r.state===STATE && !r.practice;
+    const cong=results.filter(r=>r.congruent && clean(r)).map(r=>r.rt);
+    const incong=results.filter(r=>!r.congruent && clean(r)).map(r=>r.rt);
+    summary.innerHTML = `
+      <table>
+        <tr><th>Condition</th><th>N (RT)</th><th>Mean RT (ms)</th></tr>
+        <tr><td>Congruent</td><td>${cong.length}</td><td>${Math.round(mean(cong))||'-'}</td></tr>
+        <tr><td>Incongruent</td><td>${incong.length}</td><td>${Math.round(mean(incong))||'-'}</td></tr>
+      </table>`;
+    finalScore.textContent = score;
+  }
+
+  function toCSV(){
+    const header=["state","pid","round","trial","word","stim_side","decoy","congruent","response","correct","rt","deadline","score_after","combo","lives"];
+    return [header.join(",")].concat(results.map(r=>header.map(k=>r[k]).join(","))).join("\n");
+  }
+
+  function finish(){
+    show(task,false); summarize(); show(done,true);
+    if (POST_RESULTS_URL){
+      try{
+        fetch(POST_RESULTS_URL,{method:"POST",headers:{ "Content-Type":"application/x-www-form-urlencoded" },
+          body:"payload="+encodeURIComponent(JSON.stringify({timestamp:new Date().toISOString(), results}))});
+      }catch(_){}
+    }
+  }
+
+  // ------- Input listeners -------
+  function onDown(e){ swipeStart = ('touches'in e? e.touches[0]:e).clientX; }
+  function onUp(e){
+    if (swipeStart==null) return;
+    const end = ('changedTouches'in e? e.changedTouches[0]:e).clientX;
+    const dx = end - swipeStart; swipeStart=null;
+    if (Math.abs(dx)<24) return;
+    handleResponse(dx<0 ? 'left':'right');
+  }
+
+  startBtn.onclick = ()=>startRun(false);
+  practiceBtn.onclick = ()=>startRun(true);
+  leftBtn.onclick = ()=>handleResponse('left');
+  rightBtn.onclick= ()=>handleResponse('right');
+
+  window.addEventListener('keydown',e=>{
+    if(e.key==='ArrowLeft') handleResponse('left');
+    if(e.key==='ArrowRight') handleResponse('right');
+  });
+  arena.addEventListener('mousedown',onDown); arena.addEventListener('mouseup',onUp);
+  arena.addEventListener('touchstart',onDown,{passive:true}); arena.addEventListener('touchend',onUp,{passive:true});
+
+  lh.addEventListener('change',()=>{
+    const parent=leftBtn.parentElement;
+    if(lh.checked) parent.insertBefore(rightBtn,leftBtn);
+    else parent.insertBefore(leftBtn,rightBtn);
+  });
+
+  dlBtn.onclick=()=>{
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([toCSV()],{type:'text/csv'}));
+    a.download=`neon_drift_${STATE}_${pid}.csv`; a.click();
+  };
+})();
+</script>
+</body>
+</html>
